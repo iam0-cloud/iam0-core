@@ -13,6 +13,7 @@ pub struct EllipticCurveParams {
     pub n: BigUint,
 }
 
+#[allow(non_camel_case_types, dead_code)]
 pub enum EllipticCurve {
     Custom {
         p: BigUint,
@@ -96,7 +97,7 @@ impl EllipticCurvePoint {
         }
     }
 
-    pub fn add(&self, other: &EllipticCurvePoint, p: &BigUint) -> EllipticCurvePoint {
+    pub fn add(&self, other: &EllipticCurvePoint, params: &EllipticCurveParams) -> EllipticCurvePoint {
         if self.infinity {
             return other.clone();
         }
@@ -108,8 +109,11 @@ impl EllipticCurvePoint {
             return EllipticCurvePoint::infinity();
         }
 
+        let p = &params.p;
+        let a = &params.a;
+
         let lambda = if self.x == other.x {
-            (BigUint::from(3u32) * &self.x * &self.x + BigUint::from(1u32)) * mod_inv(&(BigUint::from(2u32) * &self.y), p)
+            (BigUint::from(3u32) * &self.x * &self.x + a) * mod_inv(&(BigUint::from(2u32) * &self.y), p)
         } else {
             let dx = (&other.x + p - &self.x) % p;
             let dy = (&other.y + p - &self.y) % p;
@@ -131,9 +135,9 @@ impl EllipticCurvePoint {
 
         while k > BigUint::zero() {
             if &k & BigUint::one() == BigUint::one() {
-                result = result.add(&current, &params.p);
+                result = result.add(&current, &params);
             }
-            current = current.add(&current, &params.p);
+            current = current.add(&current, &params);
             k >>= 1;
         }
 
@@ -142,12 +146,12 @@ impl EllipticCurvePoint {
 }
 
 fn mod_inv(a: &BigUint, p_field: &BigUint) -> BigUint {
-    a.modpow(&(p_field - BigUint::from(2u8)), p_field)
+    a.modinv(p_field).expect("Failed to calculate modular inverse")
 }
 
 impl CryptoProvider<BigUint, EllipticCurvePoint> for EllipticCurve {
     fn generate_key_pair(&self) -> KeyPair<BigUint, EllipticCurvePoint> {
-        let params = self.params();
+        self.params();
         let private_key = self.random_scalar_key();
         let public_key = self.derive_public_key(&private_key);
 
@@ -181,8 +185,12 @@ impl CryptoProvider<BigUint, EllipticCurvePoint> for EllipticCurve {
         self.params().g.mul(private_key, &self.params())
     }
 
-    fn zkp_rhs(&self, commitment: &EllipticCurvePoint, challenge: &BigUint, public_key: &EllipticCurvePoint) -> EllipticCurvePoint {
-        commitment.add(&public_key.mul(challenge, &self.params()), &self.params().p)
+    fn derive_public_key_with_g(&self, g: &EllipticCurvePoint, private_key: &BigUint) -> EllipticCurvePoint {
+        g.mul(private_key, &self.params())
+    }
+
+    fn compose(&self, a: &EllipticCurvePoint, b: &EllipticCurvePoint) -> EllipticCurvePoint {
+        a.add(b, &self.params())
     }
 
     fn module(&self, value: BigUint) -> BigUint {

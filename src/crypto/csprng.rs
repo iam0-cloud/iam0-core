@@ -33,7 +33,7 @@ fn chacha_block(key: &[u8; CHACHA_KEY_SIZE], nonce: &[u8; CHACHA_NONCE_SIZE], co
     for i in 0..CHACHA_NONCE_SIZE >> 2 {
         state[13 + i] = u32::from_le_bytes([nonce[i * 4], nonce[i * 4 + 1], nonce[i * 4 + 2], nonce[i * 4 + 3]]);
     }
-    let mut initial_state = state;
+    let initial_state = state;
     for _ in 0..CHACHA_ROUNDS >> 1 {
         chacha_quarter_round(&mut state, 0, 4, 8, 12);
         chacha_quarter_round(&mut state, 1, 5, 9, 13);
@@ -108,10 +108,12 @@ impl ChaChaRng {
         }
     }
 
+    #[allow(dead_code)]
     pub fn next_u32(&mut self) -> u32 {
         u32::from_le_bytes([self.next_byte(), self.next_byte(), self.next_byte(), self.next_byte()])
     }
 
+    #[allow(dead_code)]
     pub fn next_u64(&mut self) -> u64 {
         let low = self.next_u32() as u64;
         let high = self.next_u32() as u64;

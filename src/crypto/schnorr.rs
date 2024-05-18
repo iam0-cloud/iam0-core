@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::crypto::{CryptoProvider, KeyPair};
 use std::ops::{Add, Mul};
 
@@ -36,7 +38,7 @@ where
     PublicKey: PartialEq,
 {
     let lhs = crypto.derive_public_key(&proof);
-    let rhs = crypto.zkp_rhs(commitment, challenge, public_key);
+    let rhs = crypto.compose(commitment, &crypto.derive_public_key_with_g(public_key, challenge));
     lhs == rhs
 }
 
