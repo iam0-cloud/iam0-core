@@ -78,14 +78,25 @@ pub struct EllipticCurvePoint {
     x: BigUint,
     y: BigUint,
     infinity: bool,
+    _bytes: Vec<u8>,
+}
+
+fn mod_inv(a: &BigUint, p_field: &BigUint) -> BigUint {
+    a.modinv(p_field).expect("Failed to calculate modular inverse")
 }
 
 impl EllipticCurvePoint {
     pub fn new(x: BigUint, y: BigUint) -> Self {
+        let left = x.to_bytes_le();
+        let right = y.to_bytes_le();
+        let mut _bytes = vec![0u8; left.len() + right.len()];
+        _bytes[..left.len()].copy_from_slice(&left);
+        _bytes[left.len()..].copy_from_slice(&right);
         EllipticCurvePoint {
             x,
             y,
             infinity: false,
+            _bytes,
         }
     }
 
@@ -94,6 +105,7 @@ impl EllipticCurvePoint {
             x: BigUint::zero(),
             y: BigUint::zero(),
             infinity: true,
+            _bytes: Vec::new(),
         }
     }
 
@@ -145,8 +157,10 @@ impl EllipticCurvePoint {
     }
 }
 
-fn mod_inv(a: &BigUint, p_field: &BigUint) -> BigUint {
-    a.modinv(p_field).expect("Failed to calculate modular inverse")
+impl AsRef<[u8]> for EllipticCurvePoint {
+    fn as_ref(&self) -> &[u8] {
+        self._bytes.as_ref()
+    }
 }
 
 impl CryptoProvider<BigUint, EllipticCurvePoint> for EllipticCurve {
@@ -182,7 +196,7 @@ impl CryptoProvider<BigUint, EllipticCurvePoint> for EllipticCurve {
     }
 
     fn derive_public_key(&self, private_key: &BigUint) -> EllipticCurvePoint {
-        self.params().g.mul(private_key, &self.params())
+        self.derive_public_key_with_g(&self.params().g, private_key)
     }
 
     fn derive_public_key_with_g(&self, g: &EllipticCurvePoint, private_key: &BigUint) -> EllipticCurvePoint {
@@ -195,6 +209,10 @@ impl CryptoProvider<BigUint, EllipticCurvePoint> for EllipticCurve {
 
     fn module(&self, value: BigUint) -> BigUint {
         value % self.params().n
+    }
+
+    fn private_key_from_bytes(&self, bytes: &[u8]) -> BigUint {
+        BigUint::from_bytes_le(bytes)
     }
 }
 

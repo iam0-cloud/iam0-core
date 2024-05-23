@@ -2,6 +2,8 @@
 
 use crate::crypto::{CryptoProvider, KeyPair};
 use std::ops::{Add, Mul};
+use sha3::Digest;
+use sha3::digest::{FixedOutput, HashMarker, Update};
 
 fn commitment<PrivateKey, PublicKey, Crypto>(crypto: &Crypto) -> KeyPair<PrivateKey, PublicKey>
 where
@@ -10,11 +12,22 @@ where
     crypto.generate_key_pair()
 }
 
-fn challenge<PrivateKey, PublicKey, Crypto>(crypto: &Crypto) -> PrivateKey
+fn challenge<PrivateKey, PublicKey, Payload, Crypto, Hasher>(
+    crypto: &Crypto,
+    public_key: &PublicKey,
+    payload: &Payload,
+) -> PrivateKey
 where
+    PublicKey: AsRef<[u8]>,
+    Payload: AsRef<[u8]>,
     Crypto: CryptoProvider<PrivateKey, PublicKey>,
+    Hasher: FixedOutput + Default + Update + HashMarker
 {
-    crypto.random_scalar()
+    let hash = &Hasher::default()
+        .chain(public_key)
+        .chain(payload)
+        .finalize()[..];
+    crypto.module(crypto.private_key_from_bytes(hash))
 }
 
 fn proof<PrivateKey, Crypto, T>(crypto: &Crypto, k: &PrivateKey, c: &PrivateKey, x: &PrivateKey) -> PrivateKey
@@ -44,6 +57,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use sha3::digest::core_api::CoreWrapper;
+    use sha3::Sha3_512Core;
     use super::*;
     use crate::crypto::elliptic_curve;
 
@@ -53,7 +68,7 @@ mod tests {
         let key_pair = crypto.generate_key_pair();
 
         let KeyPair { private_key: k, public_key: commitment } = commitment(&crypto);
-        let challenge = challenge(&crypto);
+        let challenge = challenge::<_, _, _, _, CoreWrapper<Sha3_512Core>>(&crypto, &key_pair.public_key, &commitment);
         let proof = proof(&crypto, &k, &challenge, &key_pair.private_key);
         assert!(verify(&crypto, &proof, &commitment, &challenge, &key_pair.public_key));
     }
