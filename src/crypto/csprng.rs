@@ -1,3 +1,5 @@
+use elliptic_curve::rand_core::block::BlockRngCore;
+use elliptic_curve::rand_core::{CryptoRng, RngCore};
 use getrandom::getrandom;
 
 const CHACHA_BLOCK_SIZE: usize = 64;
@@ -82,7 +84,7 @@ impl ChaChaRng {
         self.offset = 0;
     }
 
-    pub fn next_byte(&mut self) -> u8 {
+    pub fn next_u8(&mut self) -> u8 {
         if self.offset == CHACHA_BLOCK_SIZE {
             self.refill();
         }
@@ -90,8 +92,20 @@ impl ChaChaRng {
         self.offset += 1;
         result
     }
+}
 
-    pub fn fill_bytes(&mut self, buffer: &mut [u8]) {
+impl RngCore for ChaChaRng {
+    fn next_u32(&mut self) -> u32 {
+        u32::from_le_bytes([self.next_u8(), self.next_u8(), self.next_u8(), self.next_u8()])
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        let low = self.next_u32() as u64;
+        let high = self.next_u32() as u64;
+        (high << 32) | low
+    }
+
+    fn fill_bytes(&mut self, buffer: &mut [u8]) {
         for chunk in buffer.chunks_mut(CHACHA_BLOCK_SIZE) {
             let remaining = CHACHA_BLOCK_SIZE - self.offset;
 
@@ -108,18 +122,26 @@ impl ChaChaRng {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn next_u32(&mut self) -> u32 {
-        u32::from_le_bytes([self.next_byte(), self.next_byte(), self.next_byte(), self.next_byte()])
-    }
-
-    #[allow(dead_code)]
-    pub fn next_u64(&mut self) -> u64 {
-        let low = self.next_u32() as u64;
-        let high = self.next_u32() as u64;
-        (high << 32) | low
+    fn try_fill_bytes(&mut self, buffer: &mut [u8]) -> Result<(), elliptic_curve::rand_core::Error> {
+        self.fill_bytes(buffer);
+        Ok(())
     }
 }
+
+impl BlockRngCore for ChaChaRng {
+    type Item = u32;
+    type Results = [u32; 16];
+
+    fn generate(&mut self, results: &mut Self::Results) {
+        let bytes = chacha_block(&self.key, &self.nonce, self.counter);
+        self.counter = self.counter.wrapping_add(1);
+        for (i, chunk) in bytes.chunks(4).enumerate() {
+            results[i] = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        }
+    }
+}
+
+impl CryptoRng for ChaChaRng {}
 
 #[cfg(test)]
 mod tests {
@@ -129,7 +151,7 @@ mod tests {
     fn test_fill_bytes() {
         let mut rng = ChaChaRng::new();
         for _ in 0..CHACHA_BLOCK_SIZE - 1 {
-            rng.next_byte();
+            rng.next_u8();
         }
         let mut buffer = [0u8; CHACHA_BLOCK_SIZE];
         rng.fill_bytes(&mut buffer);
