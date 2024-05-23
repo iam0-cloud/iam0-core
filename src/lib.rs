@@ -1,3 +1,1 @@
-mod crypto;
-// pub mod endpoints;
-// mod config;
+pub mod crypto;

@@ -1,11 +1,12 @@
 use std::ops::Mul;
+
+use digest::{Digest, FixedOutput, HashMarker, Update};
 use elliptic_curve::{AffinePoint, CurveArithmetic, Field, Group, PrimeCurveArithmetic, PrimeField, ProjectivePoint, Scalar, ScalarPrimitive};
 use elliptic_curve::bigint::{AddMod, CheckedAdd, CheckedMul};
 use elliptic_curve::group::Curve;
 use elliptic_curve::point::{AffineCoordinates, PointCompression};
 use elliptic_curve::rand_core::CryptoRngCore;
 use elliptic_curve::sec1::{FromEncodedPoint, ModulusSize, ToEncodedPoint};
-use digest::{FixedOutput, HashMarker, Update, Digest};
 
 use crate::crypto::schnorr::Shnorr;
 
@@ -27,8 +28,8 @@ where
         .chain(public_key.to_encoded_point(true).as_bytes())
         .chain(payload.as_ref())
         .finalize();
-    let a = ScalarPrimitive::<Curve>::from_slice(hash.as_ref()).unwrap();
-    a.into()
+    let result = ScalarPrimitive::<Curve>::from_slice(hash.as_ref()).unwrap();
+    result.into()
 }
 
 impl<Curve> Shnorr<Scalar<Curve>, AffinePoint<Curve>> for Curve
@@ -67,6 +68,7 @@ mod tests {
     use p256::NistP256;
     use sha3::digest::core_api::CoreWrapper;
     use sha3::Sha3_256Core;
+
     use crate::crypto::csprng::ChaChaRng;
     use crate::crypto::elliptic_curve::{commitment, Shnorr};
 
