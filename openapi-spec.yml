@@ -1,0 +1,163 @@
+openapi: 3.0.3
+info:
+  title: IAM0
+  description: |-
+    Description
+  termsOfService: http://swagger.io/terms/
+  contact:
+    email: apiteam@swagger.io
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  version: 0.1.0
+servers:
+  - url: https://accounts.iam0.cloud
+tags:
+  - name: system
+    description: Operations about system
+  - name: users
+    description: Operations about users
+  - name: authentication
+    description: Operations about user authentication
+paths:
+  /api/v1/spec:
+    get:
+      tags:
+        - system
+      summary: Get available cryptographic methods
+      description: Get available cryptographic methods
+      operationId: getSpec
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSpecResponse'
+  /api/v1/users:
+    post:
+      tags:
+        - users
+      summary: Register a new user
+      description: Register a new user
+      operationId: register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+  /oauth/token:
+    post:
+      tags:
+        - authentication
+      summary: Get access token
+      description: Get access token
+      operationId: getAccessToken
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GetAccessTokenRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAccessTokenResponse'
+components:
+  schemas:
+    GetSpecResponse:
+      type: object
+      properties:
+        finite_cyclic_groups:
+          type: object
+          properties:
+            elliptic_curves:
+              type: array
+              items:
+                type: string
+            prime_modulus:
+              type: array
+              items:
+                type: string
+        hash_functions:
+          type: array
+          items:
+            type: string
+    RegisterRequest:
+      type: object
+      properties:
+        public_key:
+          type: string
+          format: byte
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        birthdate:
+          type: string
+          format: date
+        phone:
+          type: string
+          format: phone
+          nullable: true
+      required:
+        - public_key
+        - email
+        - username
+        - birthdate
+    RegisterResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    GetAccessTokenRequest:
+      type: object
+      properties:
+        grant_type:
+          type: string
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        code:
+          type: string
+        redirect_uri:
+          type: string
+      required:
+        - grant_type
+        - client_id
+        - client_secret
+        - code
+        - redirect_uri
+    GetAccessTokenResponse:
+      type: object
+      properties:
+        token_type:
+          type: string
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+          nullable: true
+        expires_in:
+          type: integer
+        scope:
+          type: string
