@@ -62,26 +62,14 @@ paths:
         content:
           application/x-www-form-urlencoded:
             schema:
-              type: object
-              properties:
-                username_or_email:
-                  type: string
-                commitment:
-                  type: string
-                  format: byte
-                proof:
-                  type: string
-                  format: byte
+              $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  token:
-                    type: string
+                $ref: '#/components/schemas/LoginResponse'
   /authorize:
     get:
       tags:
@@ -200,6 +188,30 @@ components:
         createdAt:
           type: string
           format: date-time
+    LoginRequest:
+      type: object
+      properties:
+        username_or_email:
+          type: string
+        commitment:
+          type: string
+          format: byte
+        proof:
+          type: string
+          format: byte
+      required:
+        - username_or_email
+        - commitment
+        - proof
+    LoginResponse:
+      type: object
+      properties:
+        id_token:
+          type: string
+        access_token:
+          type: string
+        refresh_token:
+          type: string
     GetAccessTokenRequest:
       type: object
       properties:
