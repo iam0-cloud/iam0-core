@@ -1,10 +1,10 @@
-use aead::{Aead, AeadCore, AeadInPlace, KeySizeUser, Nonce};
+use aead::{Aead, AeadCore, AeadInPlace, Nonce};
 use aead::generic_array::ArrayLength;
 use aead::generic_array::typenum::Unsigned;
 use aead::rand_core::CryptoRngCore;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
-use cipher::{BlockCipher, BlockEncrypt, Key, KeyInit};
+use cipher::{Key, KeyInit};
 use ecdsa::{Signature, SignatureSize};
 use signature::{Signer, Verifier};
 
