@@ -15,8 +15,6 @@ servers:
 tags:
   - name: system
     description: Operations about system
-  - name: users
-    description: Operations about users
   - name: authentication
     description: Operations about user authentication
 paths:
@@ -34,10 +32,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GetSpecResponse'
-  /api/v1/users:
+  /register:
     post:
       tags:
-        - users
+        - authentication
       summary: Register a new user
       description: Register a new user
       operationId: register
@@ -53,6 +51,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RegisterResponse'
+  /login:
+    post:
+      tags:
+        - authentication
+      summary: Login user
+      description: Login user
+      operationId: login
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                username_or_email:
+                  type: string
+                commitment:
+                  type: string
+                  format: byte
+                proof:
+                  type: string
+                  format: byte
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
   /authorize:
     get:
       tags:
