@@ -1,9 +1,8 @@
 use aead::{Aead, AeadCore, AeadInPlace, Nonce};
 use aead::generic_array::ArrayLength;
 use aead::generic_array::typenum::Unsigned;
-use aead::rand_core::CryptoRngCore;
 use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
+use base64::prelude::BASE64_URL_SAFE;
 use cipher::{Key, KeyInit};
 use ecdsa::{Signature, SignatureSize};
 use signature::{Signer, Verifier};
@@ -36,19 +35,19 @@ where
         verifier.verify(self.payload.as_ref(), self.signature.as_ref().unwrap()).is_ok()
     }
 
-    pub fn encrypt<Cipher>(&self, key: &Key<Cipher>, rng: &mut impl CryptoRngCore) -> aead::Result<String>
+    pub fn encrypt<Cipher>(&self, key: &Key<Cipher>) -> aead::Result<String>
     where
         Cipher: KeyInit + AeadInPlace,
     {
         let cipher = Cipher::new(key);
-        let nonce = Cipher::generate_nonce(rng);
+        let nonce = Cipher::generate_nonce(&mut rand::thread_rng());
         let payload = self.payload.as_ref();
         let signature = self.signature.as_ref().unwrap().to_bytes();
         let signature = signature.as_ref();
         let bytes = [&(payload.len() as u32).to_le_bytes(), payload, signature].concat();
         let bytes = cipher.encrypt(&nonce, bytes.as_slice())?;
         let bytes = [nonce.as_ref(), &bytes].concat();
-        Ok(BASE64_STANDARD.encode(bytes))
+        Ok(BASE64_URL_SAFE.encode(bytes))
     }
 
     pub fn decrypt<Cipher>(
@@ -61,7 +60,7 @@ where
     {
         let nonce_size = Cipher::NonceSize::to_usize();
         let cipher = Cipher::new(key);
-        let bytes = BASE64_STANDARD.decode(token).map_err(|_| "Invalid token")?;
+        let bytes = BASE64_URL_SAFE.decode(token).map_err(|_| "Invalid token")?;
         let nonce = Nonce::<Cipher>::from_slice(&bytes[..nonce_size]);
         let bytes = &bytes[nonce_size..];
         let bytes = cipher.decrypt(&nonce, bytes).map_err(|_| "Decryption failed")?;
@@ -118,13 +117,11 @@ mod tests {
     use p256::ecdsa::{SigningKey, VerifyingKey};
     use p256::NistP256;
 
-    use crate::crypto::csprng::ChaChaRng;
-
     use super::*;
 
     #[test]
     fn test_token() {
-        let mut rng = ChaChaRng::new();
+        let mut rng = rand::thread_rng();
 
         let signing_key = SigningKey::random(&mut rng);
         let verifying_key = VerifyingKey::from(&signing_key);
@@ -133,7 +130,7 @@ mod tests {
         assert!(token.verify(&verifying_key));
 
         let key = Aes256Gcm::generate_key(&mut rng);
-        let encrypted = token.encrypt::<Aes256Gcm>(&key, &mut rng).unwrap();
+        let encrypted = token.encrypt::<Aes256Gcm>(&key).unwrap();
         let decrypted: Token<_, NistP256> = Token::decrypt::<Aes256Gcm>(
             &encrypted,
             &key,

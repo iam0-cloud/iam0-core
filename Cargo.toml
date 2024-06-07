@@ -9,7 +9,6 @@ edition = "2021"
 # Data 
 num-bigint = "0.4.5"
 num-traits = "0.2.19"
-rand_core = "0.9.0-alpha.1"
 getrandom = "0.2"
 digest = "0.10.7"
 p256 = "0.13.2"
