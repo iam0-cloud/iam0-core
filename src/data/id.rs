@@ -1,6 +1,9 @@
+use std::fmt::Display;
 use std::time::{Duration, SystemTime};
+use base64::Engine;
 use rand::Rng;
 use rand::rngs::ThreadRng;
+use base64::prelude::BASE64_URL_SAFE;
 
 const TIMESTAMP_BITS: u8 = 64;
 const SEQUENCE_BITS: u8 = 12;
@@ -17,7 +20,13 @@ const WORKER_ID_OFFSET: u8 = RANDOM_BITS;
 
 const _: () = assert!(128 == TIMESTAMP_OFFSET + TIMESTAMP_BITS);
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+const TIMESTAMP_MASK: u128 = (1 << TIMESTAMP_BITS) - 1;
+const SEQUENCE_MASK: u128 = (1 << SEQUENCE_BITS) - 1;
+const SERVICE_ID_MASK: u128 = (1 << SERVICE_ID_BITS) - 1;
+const WORKER_ID_MASK: u128 = (1 << WORKER_ID_BITS) - 1;
+const RANDOM_MASK: u128 = (1 << RANDOM_BITS) - 1;
+
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
 pub struct Identifier {
     timestamp: SystemTime,
     sequence: u16,
@@ -26,14 +35,47 @@ pub struct Identifier {
     random: u16,
 }
 
+impl Identifier {
+    pub fn as_base64(&self) -> String {
+        let id: u128 = (*self).into();
+        let bytes = id.to_be_bytes();
+        BASE64_URL_SAFE.encode(&bytes)
+    }
+
+    pub fn from_base64(base64: &str) -> Option<Self> {
+        let bytes = BASE64_URL_SAFE.decode(base64).ok()?;
+        let (bytes, rest) = bytes.split_at(std::mem::size_of::<u128>());
+        if !rest.is_empty() {
+            return None;
+        }
+        let id = u128::from_be_bytes(bytes.try_into().unwrap());
+        Some(id.into())
+    }
+
+    pub fn as_hex(&self) -> String {
+        format!("{:032x}", u128::from(*self))
+    }
+
+    pub fn from_hex(hex: &str) -> Option<Self> {
+        let id = u128::from_str_radix(hex, 16).ok()?;
+        Some(id.into())
+    }
+}
+
+impl Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_hex())
+    }
+}
+
 impl From<u128> for Identifier {
     fn from(id: u128) -> Self {
         Self {
-            timestamp: SystemTime::UNIX_EPOCH + Duration::from_millis((id >> TIMESTAMP_OFFSET) as u64),
-            sequence: ((id >> SEQUENCE_OFFSET) & 0xffff) as u16,
-            service_id: ((id >> SERVICE_ID_OFFSET) & 0xffff) as u16,
-            worker_id: ((id >> WORKER_ID_BITS) & 0xffff) as u16,
-            random: (id & 0xffff) as u16,
+            timestamp: SystemTime::UNIX_EPOCH + Duration::from_millis(((id >> TIMESTAMP_OFFSET) & TIMESTAMP_MASK) as u64),
+            sequence: ((id >> SEQUENCE_OFFSET) & SEQUENCE_MASK) as u16,
+            service_id: ((id >> SERVICE_ID_OFFSET) & SERVICE_ID_MASK) as u16,
+            worker_id: ((id >> WORKER_ID_BITS) & WORKER_ID_MASK) as u16,
+            random: (id & RANDOM_MASK) as u16,
         }
     }
 }
@@ -121,5 +163,33 @@ mod tests {
         let end = SystemTime::now();
         let duration = end.duration_since(start).unwrap();
         assert!(duration / count * 3000 < Duration::from_millis(1), "Duration: {:?}", duration / count * 3000);
+    }
+
+    #[test]
+    fn test_base64() {
+        let id = Identifier {
+            timestamp: SystemTime::UNIX_EPOCH + Duration::from_millis(1),
+            sequence: 2,
+            service_id: 3,
+            worker_id: 4,
+            random: 5,
+        };
+        let base64 = id.as_base64();
+        let id2 = Identifier::from_base64(&base64).unwrap();
+        assert_eq!(id, id2);
+    }
+
+    #[test]
+    fn test_hex() {
+        let id = Identifier {
+            timestamp: SystemTime::UNIX_EPOCH + Duration::from_millis(1),
+            sequence: 2,
+            service_id: 3,
+            worker_id: 4,
+            random: 5,
+        };
+        let hex = id.as_hex();
+        let id2 = Identifier::from_hex(&hex).unwrap();
+        assert_eq!(id, id2);
     }
 }
