@@ -6,9 +6,10 @@ use crate::data::id::Identifier;
 use crate::model::store::{ClientStore, UserStore};
 use crate::model::{Client, User};
 
-struct UserLoginPayload {
-    client_id: Identifier,
-    email: String,
+#[derive(Debug, serde::Deserialize)]
+pub struct UserLoginPayload {
+    pub client_id: Identifier,
+    pub email: String,
 }
 
 impl From<&UserLoginPayload> for Vec<u8> {
@@ -20,21 +21,25 @@ impl From<&UserLoginPayload> for Vec<u8> {
     }
 }
 
-struct UserLoginRequest {
-    payload: UserLoginPayload,
-    proof: ShnorrProof,
+#[derive(Debug, serde::Deserialize)]
+pub struct UserLoginRequest {
+    #[serde(flatten)]
+    pub payload: UserLoginPayload,
+
+    #[serde(flatten)]
+    pub proof: ShnorrProof,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct UserTokenPayload {
-    user_id: Identifier,
-    client_id: Identifier,
+pub struct UserTokenPayload {
+    pub user_id: Identifier,
+    pub client_id: Identifier,
     // roles: Vec<String>,
     // permissions: Vec<String>,
 }
 
-struct UserLoginResponse {
-    token: Token<UserTokenPayload, p256::NistP256>,
+pub struct UserLoginResponse {
+    pub token: Token<UserTokenPayload, p256::NistP256>,
 }
 
 trait UserAuthentication {
