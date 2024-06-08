@@ -4,6 +4,7 @@ use base64::Engine;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use base64::prelude::BASE64_URL_SAFE;
+use serde::{Deserialize, Serialize};
 
 const TIMESTAMP_BITS: u8 = 64;
 const SEQUENCE_BITS: u8 = 12;
@@ -87,6 +88,38 @@ impl From<Identifier> for u128 {
             (id.service_id as u128) << SERVICE_ID_OFFSET |
             (id.worker_id as u128) << WORKER_ID_BITS |
             id.random as u128
+    }
+}
+
+impl Serialize for Identifier {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: serde::Serializer
+    {
+        serializer.serialize_u128(u128::from(*self))
+    }
+}
+
+struct IdentifierVisitor;
+
+impl<'de> serde::de::Visitor<'de> for IdentifierVisitor {
+    type Value = Identifier;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a u128")
+    }
+
+    fn visit_u128<E>(self, v: u128) -> Result<Self::Value, E>
+        where E: serde::de::Error
+    {
+        Ok(v.into())
+    }
+}
+
+impl<'de> Deserialize<'de> for Identifier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: serde::Deserializer<'de>
+    {
+        deserializer.deserialize_u128(IdentifierVisitor)
     }
 }
 

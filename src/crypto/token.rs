@@ -1,112 +1,114 @@
-use aead::{Aead, AeadCore, AeadInPlace, Nonce};
+use aead::{Aead, AeadInPlace, Nonce};
 use aead::generic_array::ArrayLength;
 use aead::generic_array::typenum::Unsigned;
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE;
-use cipher::{Key, KeyInit};
+use cipher::KeyInit;
 use ecdsa::{Signature, SignatureSize};
+use serde::{Deserialize, Serialize};
 use signature::{Signer, Verifier};
 
-pub struct Token<Payload: AsRef<[u8]>, Curve: elliptic_curve::PrimeCurve>
+pub struct Token<T, Curve: elliptic_curve::PrimeCurve>
 where
     SignatureSize<Curve>: ArrayLength<u8>
 {
-    payload: Payload,
+    payload: T,
     signature: Option<Signature<Curve>>,
 }
 
-impl<Payload: AsRef<[u8]>, Curve: elliptic_curve::PrimeCurve> Token<Payload, Curve>
+impl<T, Curve: elliptic_curve::PrimeCurve> Token<T, Curve>
 where
     SignatureSize<Curve>: ArrayLength<u8>
 {
-    pub fn new(payload: Payload, signature: Signature<Curve>) -> Self {
+    pub fn new(payload: T, signature: Signature<Curve>) -> Self {
         Self {
             payload,
             signature: Some(signature),
         }
     }
-
-    pub fn sign(payload: Payload, signer: &impl Signer<Signature<Curve>>) -> Self {
-        let signature = signer.sign(payload.as_ref());
-        Self::new(payload, signature)
-    }
-
-    pub fn verify(&self, verifier: &impl Verifier<Signature<Curve>>) -> bool {
-        verifier.verify(self.payload.as_ref(), self.signature.as_ref().unwrap()).is_ok()
-    }
-
-    pub fn encrypt<Cipher>(&self, key: &Key<Cipher>) -> aead::Result<String>
-    where
-        Cipher: KeyInit + AeadInPlace,
-    {
-        let cipher = Cipher::new(key);
-        let nonce = Cipher::generate_nonce(&mut rand::thread_rng());
-        let payload = self.payload.as_ref();
-        let signature = self.signature.as_ref().unwrap().to_bytes();
-        let signature = signature.as_ref();
-        let bytes = [&(payload.len() as u32).to_le_bytes(), payload, signature].concat();
-        let bytes = cipher.encrypt(&nonce, bytes.as_slice())?;
-        let bytes = [nonce.as_ref(), &bytes].concat();
-        Ok(BASE64_URL_SAFE.encode(bytes))
-    }
-
-    pub fn decrypt<Cipher>(
-        token: &str,
-        key: &Key<Cipher>,
-        map_fn: impl FnOnce(&[u8]) -> Payload
-    ) -> Result<Self, &'static str>
-    where
-        Cipher: KeyInit + AeadInPlace + AeadCore,
-    {
-        let nonce_size = Cipher::NonceSize::to_usize();
-        let cipher = Cipher::new(key);
-        let bytes = BASE64_URL_SAFE.decode(token).map_err(|_| "Invalid token")?;
-        let nonce = Nonce::<Cipher>::from_slice(&bytes[..nonce_size]);
-        let bytes = &bytes[nonce_size..];
-        let bytes = cipher.decrypt(&nonce, bytes).map_err(|_| "Decryption failed")?;
-        let length_bytes = &bytes[..4];
-        let length = u32::from_le_bytes(length_bytes.try_into().unwrap()) as usize;
-        let payload = &bytes[4..4 + length];
-        let signature = &bytes[4 + length..];
-        let signature = Signature::from_slice(signature).map_err(|_| "Invalid signature")?;
-        Ok(Self::new(map_fn(payload), signature))
-    }
 }
 
-trait TokenSigner<Payload: AsRef<[u8]>, Curve: elliptic_curve::PrimeCurve>: Signer<Signature<Curve>>
+pub trait TokenSigner<T: Serialize, Curve: elliptic_curve::PrimeCurve>: Signer<Signature<Curve>>
 where
     SignatureSize<Curve>: ArrayLength<u8>
 {
-    fn sign(&self, payload: Payload) -> Token<Payload, Curve> {
-        let signature = Signer::sign(self, payload.as_ref());
+    fn sign(&self, payload: T) -> Token<T, Curve> {
+        let serialized = bincode::serialize(&payload).unwrap();
+        let signature = Signer::sign(self, serialized.as_slice());
         Token::new(payload, signature)
     }
 }
 
-trait TokenVerifier<Payload: AsRef<[u8]>, Curve: elliptic_curve::PrimeCurve>: Verifier<Signature<Curve>>
+pub trait TokenVerifier<T: Serialize, Curve: elliptic_curve::PrimeCurve>: Verifier<Signature<Curve>>
 where
     SignatureSize<Curve>: ArrayLength<u8>
 {
-    fn verify(&self, token: Token<Payload, Curve>) -> bool {
-        let payload = token.payload.as_ref();
-        Verifier::verify(self, payload, token.signature.as_ref().unwrap()).is_ok()
+    fn verify(&self, token: &Token<T, Curve>) -> bool {
+        let payload = bincode::serialize(&token.payload).unwrap();
+        Verifier::verify(self, payload.as_slice(), token.signature.as_ref().unwrap()).is_ok()
+    }
+}
+
+pub trait TokenCipher<Curve: elliptic_curve::PrimeCurve>: KeyInit + AeadInPlace
+where
+    SignatureSize<Curve>: ArrayLength<u8>
+{
+    fn encrypt_token<T: Serialize>(&self, token: &Token<T, Curve>) -> aead::Result<String> {
+        let nonce = Self::generate_nonce(&mut rand::thread_rng());
+        let payload_bytes = bincode::serialize(&token.payload).unwrap();
+        let signature_bytes = bincode::serialize(&token.signature).unwrap();
+        let bytes = [
+            &(payload_bytes.len() as u32).to_le_bytes(),
+            payload_bytes.as_slice(),
+            &signature_bytes.as_slice()[1..],
+        ].concat();
+        let bytes = self.encrypt(&nonce, bytes.as_slice())?;
+        let bytes = [
+            nonce.as_slice(),
+            bytes.as_slice(),
+        ].concat();
+
+        Ok(BASE64_URL_SAFE.encode(bytes))
+    }
+
+    fn decrypt_token<T: for<'de> Deserialize<'de>>(&self, encrypted: &str) -> aead::Result<Token<T, Curve>> {
+        let bytes = BASE64_URL_SAFE.decode(encrypted).map_err(|_| aead::Error)?;
+        let nonce = Nonce::<Self>::from_slice(&bytes[..Self::NonceSize::to_usize()]);
+        let bytes = &bytes[Self::NonceSize::to_usize()..];
+        let bytes = self.decrypt(&nonce, bytes)?;
+        let length_bytes = &bytes[..4];
+        let length = u32::from_le_bytes(length_bytes.try_into().unwrap()) as usize;
+        let bytes = &bytes[4..];
+        let payload_bytes = &bytes[..length];
+        let signature_bytes = &bytes[length..];
+        let payload: T = bincode::deserialize(payload_bytes).unwrap();
+        let signature: Signature<Curve> = bincode::deserialize(signature_bytes).unwrap();
+        Ok(Token::new(payload, signature))
     }
 }
 
 impl<
-    Payload: AsRef<[u8]>,
+    T: Serialize,
     Curve: elliptic_curve::PrimeCurve,
     Signer: signature::Signer<Signature<Curve>>,
-> TokenSigner<Payload, Curve> for Signer
+> TokenSigner<T, Curve> for Signer
 where
     SignatureSize<Curve>: ArrayLength<u8>
 {}
 
 impl<
-    Payload: AsRef<[u8]>,
+    T: Serialize,
     Curve: elliptic_curve::PrimeCurve,
     Verifier: signature::Verifier<Signature<Curve>>,
-> TokenVerifier<Payload, Curve> for Verifier
+> TokenVerifier<T, Curve> for Verifier
+where
+    SignatureSize<Curve>: ArrayLength<u8>
+{}
+
+impl<
+    Curve: elliptic_curve::PrimeCurve,
+    Cipher: KeyInit + AeadInPlace,
+> TokenCipher<Curve> for Cipher
 where
     SignatureSize<Curve>: ArrayLength<u8>
 {}
@@ -125,17 +127,14 @@ mod tests {
 
         let signing_key = SigningKey::random(&mut rng);
         let verifying_key = VerifyingKey::from(&signing_key);
-        let payload = b"Hello, World!";
-        let token = Token::sign(payload, &signing_key);
-        assert!(token.verify(&verifying_key));
+        let payload = "Hello, World!".to_string();
+        let token = TokenSigner::sign(&signing_key, payload);
+        assert!(TokenVerifier::verify(&verifying_key, &token));
 
         let key = Aes256Gcm::generate_key(&mut rng);
-        let encrypted = token.encrypt::<Aes256Gcm>(&key).unwrap();
-        let decrypted: Token<_, NistP256> = Token::decrypt::<Aes256Gcm>(
-            &encrypted,
-            &key,
-            |payload| payload.to_vec()
-        ).expect("Decryption failed");
-        assert!(decrypted.verify(&verifying_key));
+        let cipher = Aes256Gcm::new(&key);
+        let encrypted = cipher.encrypt_token(&token).unwrap();
+        let decrypted: Token<String, NistP256> = cipher.decrypt_token(encrypted.as_str()).unwrap();
+        assert!(TokenVerifier::verify(&verifying_key, &decrypted));
     }
 }
