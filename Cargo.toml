@@ -11,7 +11,7 @@ num-bigint = "0.4.5"
 num-traits = "0.2.19"
 getrandom = "0.2"
 digest = "0.10.7"
-p256 = "0.13.2"
+p256 = { version = "0.13.2", features = ["serde"] }
 elliptic-curve = "0.13.8"
 base64 = "0.22.1"
 aes-gcm = "0.10.3"

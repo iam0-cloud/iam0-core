@@ -59,7 +59,7 @@ where
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, PartialEq)]
 #[serde(tag = "spec")]
 pub enum ShnorrProof {
     /// This variant is selected with the "spec" field "p256"
@@ -69,7 +69,6 @@ pub enum ShnorrProof {
         commitment: AffinePoint<p256::NistP256>,
 
         // TODO
-        #[serde(skip)]
         proof: Scalar<p256::NistP256>,
 
         #[serde(deserialize_with = "deserialize_p256_affine_point_from_ec1")]
@@ -112,29 +111,91 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_zkp() {
+    fn valid_shnorr_proof() {
         let (private_key, public_key) = commitment::<NistP256>();
         let (proof, commitment) = NistP256.proof(
-            b"hello world",
+            b"payload",
             &private_key,
         );
         assert!(NistP256.verify(
-            b"hello world",
+            b"payload",
             &public_key,
             &proof,
             &commitment
         ));
-    }   
+    }
+
+    #[test]
+    fn invalid_payload_shnorr_proof() {
+        let (private_key, public_key) = commitment::<NistP256>();
+        let (proof, commitment) = NistP256.proof(
+            b"payload",
+            &private_key,
+        );
+        assert!(NistP256.verify(
+            b"corrupted_payload",
+            &public_key,
+            &proof,
+            &commitment
+        ) == false);
+    }
         
     #[test]
-    fn valid_shnorr_request_body() {
+    fn valid_serialize_deserialize_shnorr_proof() {
+        let (private_key, public_key) = commitment::<NistP256>();
+        let (proof, commitment) = NistP256.proof(
+            b"payload",
+            &private_key
+        );
+
         let json_request = serde_json::json!({
             "spec": "p256",
-            "commitment": "04adb12950fede4210e0a6c8327ad27b1cb5c89523fdb24955a8c25bbdb4f3737d77ce8c35343e876b36cdf990b26d7f1d04a6a611aa1954c04f474e54c2f542cf",
-            //"proof": "adb12950fede4210e0a6c8327ad27b1cb5c89523fdb24955a8c25bbdb4f3737d",
-            "public_key": "04adb12950fede4210e0a6c8327ad27b1cb5c89523fdb24955a8c25bbdb4f3737d77ce8c35343e876b36cdf990b26d7f1d04a6a611aa1954c04f474e54c2f542cf",
+            "commitment": hex::encode(commitment.to_encoded_point(false)),
+            "proof": hex::encode(proof.to_bytes()),
+            "public_key": hex::encode(public_key.to_encoded_point(false)),
         }).to_string();
-        
-        assert!(serde_json::from_str::<ShnorrProof>(&json_request).is_ok());
+
+        let Ok(ShnorrProof::CurveNistP256 { 
+            commitment, 
+            proof, 
+            public_key 
+        }) = serde_json::from_str::<ShnorrProof>(&json_request)
+            else {
+                panic!("failed to deserialize");
+            };
+
+        assert!(
+            NistP256.verify(
+                b"payload",
+                &public_key,
+                &proof,
+                &commitment
+            )
+        );
+    }
+
+    #[test]
+    fn invalid_deserialize_shnorr_proof() {        
+        let (private_key, public_key) = commitment::<NistP256>();
+        let (proof, commitment) = NistP256.proof(
+            b"payload",
+            &private_key
+        );
+
+        let json_request = serde_json::json!({
+            "spec": "p256",
+            "commitment": "ff",
+            "proof": hex::encode(proof.to_bytes()),
+            "public_key": hex::encode(public_key.to_encoded_point(false)),
+        }).to_string();
+        assert!(serde_json::from_str::<ShnorrProof>(&json_request).is_err());
+
+        let json_request = serde_json::json!({
+            "spec": "p256",            
+            "commitment": hex::encode(commitment.to_encoded_point(false)),
+            "proof": hex::encode(proof.to_bytes()),
+            "public_key": "04ff",
+        }).to_string();
+        assert!(serde_json::from_str::<ShnorrProof>(&json_request).is_err());      
     }
 }
