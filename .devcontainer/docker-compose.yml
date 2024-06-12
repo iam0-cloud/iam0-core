@@ -1,0 +1,13 @@
+services:
+  dev:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    volumes:
+      - ..:/workspace:cached
+      - target-volume:/workspace/target
+    command: /bin/sh -c "while sleep 1000; do :; done"
+  
+# for better r/w performance, hence it improves compile times
+volumes:
+  target-volume:
