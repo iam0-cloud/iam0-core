@@ -76,6 +76,24 @@ pub enum ShnorrProof {
     },
 }
 
+impl ShnorrProof {
+    pub fn verify<'a, T>(&self, payload: &'a T) -> bool 
+    where
+        Vec<u8>: From<&'a T> 
+    {
+        match self {
+            Self::CurveNistP256 { commitment, proof, public_key } => {
+                p256::NistP256.verify(
+                    &Vec::from(payload),
+                    &public_key,
+                    &proof,
+                    &commitment,
+                )
+            }
+        }
+    }
+}
+
 impl<Curve> Shnorr<Scalar<Curve>, AffinePoint<Curve>> for Curve
     where
         Curve: CurveArithmetic + PointCompression,

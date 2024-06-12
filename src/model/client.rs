@@ -1,11 +1,13 @@
 use crate::data::id::Identifier;
 use crate::model::store::UserStore;
+use crate::model::store::StoreError;
 
+#[async_trait::async_trait]
 pub trait Client: UserStore {
-    fn get_id(&self) -> Identifier;
-    fn get_parent_id(&self) -> Identifier;
+    async fn get_id(&self) -> Result<Identifier, StoreError>;
+    async fn get_parent_id(&self) -> Result<Identifier, StoreError>;
 
-    fn get_encryption_key(&self) -> Vec<u8>;
-    fn get_signing_key(&self) -> Vec<u8>;
-    fn get_verification_key(&self) -> Vec<u8>;
+    async fn get_encryption_key(&self) -> Result<Vec<u8>, StoreError>;
+    async fn get_signing_key_bytes(&self) -> Result<Vec<u8>, StoreError>;
+    async fn get_verification_key(&self) -> Result<Vec<u8>, StoreError>;
 }

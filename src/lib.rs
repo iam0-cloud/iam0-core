@@ -1,4 +1,4 @@
 pub mod crypto;
 pub mod data;
-mod model;
-mod service;
+pub mod store;
+pub mod service;
